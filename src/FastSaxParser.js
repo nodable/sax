@@ -2,7 +2,7 @@
 
 import { Writable } from 'stream';
 import XMLParser from '@nodable/flexible-xml-parser';
-import FastSaxBuilderFactory from './FastSaxBuilder.js';
+import FastSaxBuilderFactory, { FastSaxBuilder } from './FastSaxBuilder.js';
 
 /**
  * FastSaxParser
@@ -244,4 +244,4 @@ export class FastSaxParser {
 }
 
 export default FastSaxParser;
-export { FastSaxBuilderFactory };
+export { FastSaxBuilderFactory, FastSaxBuilder };

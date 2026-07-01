@@ -16,12 +16,12 @@ import { performance } from 'perf_hooks';
 import sax from 'sax';
 import { SaxesParser } from 'saxes';
 import { FastSaxParser } from '../index.js';
-import { makeFlat, makeDeep, makeMixed } from './fixtures.js';
+import { makeFlat, makeDeep, makeMixed, makeSvg } from './fixtures.js';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const WARMUP   = 50;   // iterations to discard
-const ITERS    = 500;  // measured iterations
+const WARMUP = 50;   // iterations to discard
+const ITERS = 500;  // measured iterations
 
 // ─── Parser factories ─────────────────────────────────────────────────────────
 
@@ -30,10 +30,20 @@ function makeFsp() {
   // (empty chains = fast path). skip.attributes: false to parse element attrs.
   let starts = 0, texts = 0, ends = 0;
   const p = new FastSaxParser({
-    fxpOptions: { skip: { attributes: false } },
+    fxpOptions: {
+      skip: {
+        attributes: true,
+        nsPrefix: true,
+        whitespaceText: false
+      },
+      attributes: {
+        booleanType: false,
+      }
+      // tags: { unpaired: ['br'] } 
+    },
     onStartElement() { starts++; },
-    onText()         { texts++;  },
-    onEndElement()   { ends++;   },
+    onText() { texts++; },
+    onEndElement() { ends++; },
   });
   return { name: 'fast-sax-parser', parse: (xml) => p.parse(xml), counts: () => ({ starts, texts, ends }) };
 }
@@ -45,8 +55,8 @@ function makeSax() {
   let starts = 0, texts = 0, ends = 0;
   function parse(xml) {
     const p = sax.parser(true /* strict */);
-    p.onopentag  = () => starts++;
-    p.ontext     = () => texts++;
+    p.onopentag = () => starts++;
+    p.ontext = () => texts++;
     p.onclosetag = () => ends++;
     p.write(xml).close();
   }
@@ -57,9 +67,9 @@ function makeSaxes() {
   // saxes strict-XML mode (default — no fragment, no xmlns)
   let starts = 0, texts = 0, ends = 0;
   const p = new SaxesParser();
-  p.on('opentag',  () => starts++);
-  p.on('text',     () => texts++ );
-  p.on('closetag', () => ends++  );
+  p.on('opentag', () => starts++);
+  p.on('text', () => texts++);
+  p.on('closetag', () => ends++);
   return {
     name: 'saxes',
     parse: (xml) => { p.write(xml); p.close(); },
@@ -119,9 +129,26 @@ bench(
   [makeFsp(), makeSax(), makeSaxes()],
 );
 
-// Mixed: comments, CDATA, PIs alongside elements
+// Mixed: comments, CDATA, PIs alongside elements, plus unpaired <br> tags
+
+console.log("SAX and SAXES doesn't support unpaired tags")
 bench(
-  'Mixed 300 elements (comments + CDATA)',
+  'Mixed 300 elements (comments + CDATA + unpaired)',
   makeMixed(300),
+  [makeFsp(), makeSax(), makeSaxes()],
+);
+
+// SVG-shaped: xmlns, deep <g> nesting, long `d` attribute values
+bench(
+  'SVG 300 paths (depth=4, pathLength=40)',
+  makeSvg(300, 4, 40),
+  [makeFsp(), makeSax(), makeSaxes()],
+);
+
+// SVG stress: fewer paths but much longer `d` values — isolates
+// AttributeProcessor's per-char scan cost from element/tag dispatch cost
+bench(
+  'SVG 50 paths, very long d attrs (pathLength=500)',
+  makeSvg(50, 4, 500),
   [makeFsp(), makeSax(), makeSaxes()],
 );

@@ -53,16 +53,54 @@ export default class FastSaxBuilderFactory {
   /**
    * Called by XMLParser before each document parse to obtain a fresh builder.
    *
+   * Selects between two builder classes based on whether either value-parser
+   * chain is non-empty — decided once here (builderOptions is fixed per
+   * factory), not per call inside the builder:
+   *
+   *   - `FastSaxBuilderBare`: both `tags.valueParsers` and
+   *     `attributes.valueParsers` are empty. No pipeline/context/tagName
+   *     tracking fields exist on the instance at all (not just null) —
+   *     smallest possible hidden-class shape, no per-call branch.
+   *   - `FastSaxBuilder`: either chain is non-empty. Keeps the existing
+   *     per-field `_emptyTagsPipeline`/`_emptyAttrsPipeline` branches to
+   *     handle the mixed case (one chain empty, one not) without needing a
+   *     4-way class split for a combination assumed to be rare.
+   *
+   * Every instance a given factory produces uses the same class (builder
+   * options are fixed at factory construction), so call sites in FXP
+   * (`outputBuilder.addAttribute(...)` etc.) stay monomorphic for the life
+   * of an `XMLParser` built from this factory.
+   *
    * @param {object} parserOptions
    * @param {import('path-expression-matcher').MatcherView} readonlyMatcher
-   * @returns {FastSaxBuilder}
+   * @returns {FastSaxBuilder|FastSaxBuilderBare}
    */
   getInstance(parserOptions, readonlyMatcher) {
+    const tagChain = this.builderOptions?.tags?.valueParsers ?? [];
+    const attrChain = this.builderOptions?.attributes?.valueParsers ?? [];
+
+    const sharedContext = new SharedContext();
+
+    /**
+     * Pipeline for tag text values. null when chain is empty.
+     * @type {ValueParserPipeline|null}
+     */
+    const tagsPipeline = new ValueParserPipeline(tagChain, this.registry, sharedContext);
+
+    /**
+     * Pipeline for attribute values. null when chain is empty.
+     * @type {ValueParserPipeline|null}
+     */
+    const attrsPipeline = new ValueParserPipeline(attrChain, this.registry, sharedContext);
+
+
     return new FastSaxBuilder(
       parserOptions,
       this.builderOptions,
       readonlyMatcher,
-      this.registry,
+      sharedContext,
+      tagsPipeline,
+      attrsPipeline
     );
   }
 }
@@ -78,10 +116,6 @@ export class FastSaxBuilder {
    * - `addRawValue` / `_addChild`: only called from BaseOutputBuilder's own
    *   addComment/addLiteral, both of which FastSaxBuilder overrides fully.
    *   Never called in FSP's path. Removed.
-   * - `tagNameStack` push/pop: only feeds `this.tagName`, which only feeds the
-   *   `Context` object passed to `attrsPipeline.run()` / `tagsPipeline.run()`.
-   *   When both chains are empty the pipelines are bypassed entirely and
-   *   Context is never constructed, so tagName tracking is skipped too.
    *
    * Hot-path optimizations vs the inherited version:
    * 1. `addAttribute` with empty chain: raw assignment, no Context alloc, no
@@ -96,55 +130,41 @@ export class FastSaxBuilder {
    * @param {import('path-expression-matcher').MatcherView} readonlyMatcher
    * @param {ValueParserRegistry} registry
    */
-  constructor(parserOptions, builderOptions, readonlyMatcher, registry) {
+  constructor(parserOptions, builderOptions, readonlyMatcher, sharedContext, tagsPipeline, attrsPipeline) {
     this.parserOptions = parserOptions;
     this.builderOptions = builderOptions;
     this.matcher = readonlyMatcher;
     this.handlers = builderOptions.handlers || {};
 
-    const tagChain = builderOptions?.tags?.valueParsers ?? [];
-    const attrChain = builderOptions?.attributes?.valueParsers ?? [];
+
 
     /**
      * True when the tag value-parser chain is empty — addValue takes a
      * branch that skips pipeline invocation and Context allocation entirely.
      * @type {boolean}
      */
-    this._emptyTagsPipeline = tagChain.length === 0;
+    this._emptyTagsPipeline = tagsPipeline.valParsers.length === 0;
 
     /**
      * True when the attribute value-parser chain is empty — addAttribute
      * takes a branch that skips pipeline invocation and Context allocation.
      * @type {boolean}
      */
-    this._emptyAttrsPipeline = attrChain.length === 0;
+    this._emptyAttrsPipeline = attrsPipeline.valParsers.length === 0;
 
-    /**
-     * Shared mutable context distributed to all value parsers.
-     * Only allocated when at least one pipeline is non-empty; otherwise kept
-     * null and the addDeclaration xmlVersion write is simply skipped (no
-     * EntityParser registered, so no consumer of that value).
-     * @type {SharedContext|null}
-     */
-    this.sharedContext = (!this._emptyTagsPipeline || !this._emptyAttrsPipeline)
-      ? new SharedContext()
-      : null;
+    this.sharedContext = sharedContext;
 
     /**
      * Pipeline for tag text values. null when chain is empty.
      * @type {ValueParserPipeline|null}
      */
-    this.tagsPipeline = this._emptyTagsPipeline
-      ? null
-      : new ValueParserPipeline(tagChain, registry, this.sharedContext);
+    this.tagsPipeline = tagsPipeline;
 
     /**
      * Pipeline for attribute values. null when chain is empty.
      * @type {ValueParserPipeline|null}
      */
-    this.attrsPipeline = this._emptyAttrsPipeline
-      ? null
-      : new ValueParserPipeline(attrChain, registry, this.sharedContext);
+    this.attrsPipeline = attrsPipeline;
 
     // Reset all stateful parsers in the chains (e.g. EntityParser caches
     // doc-level entities and must be reset between documents).
@@ -155,17 +175,6 @@ export class FastSaxBuilder {
     // addElement/addInstruction/addDeclaration call. Never grows across
     // siblings or across documents.
     this.attributes = {};
-
-    // Open ancestor tag names — only kept when at least one pipeline is
-    // non-empty, since tagName is only used to construct the Context object
-    // passed to pipeline.run(). When both pipelines are empty, tagName is
-    // never read, so we skip the stack entirely.
-    if (!this._emptyTagsPipeline || !this._emptyAttrsPipeline) {
-      /** @type {string[]} */
-      this.tagNameStack = [];
-      /** @type {string} */
-      this.tagName = null;
-    }
 
     this._pendingStopNode = false;
   }
@@ -204,10 +213,6 @@ export class FastSaxBuilder {
    * @param {object} matcher
    */
   addElement(tag, matcher) {
-    if (this.tagNameStack) {
-      this.tagNameStack.push(this.tagName);
-      this.tagName = tag.name;
-    }
     this.handlers.onStartElement?.call(this, tag.name, this.attributes, tag);
     this.attributes = {};
   }
@@ -219,9 +224,7 @@ export class FastSaxBuilder {
    *   carries position fields only when a real closing tag was read.
    */
   closeElement(matcher, closeMeta) {
-    const name = closeMeta?.name ?? (this.tagNameStack ? this.tagName : undefined);
-    this.handlers.onEndElement?.call(this, name, closeMeta);
-    if (this.tagNameStack) this.tagName = this.tagNameStack.pop();
+    this.handlers.onEndElement?.call(this, closeMeta.name, closeMeta);
     this._pendingStopNode = false;
   }
 
@@ -240,7 +243,7 @@ export class FastSaxBuilder {
     if (this._emptyTagsPipeline) {
       this.handlers.onText?.call(this, text);
     } else {
-      const context = new Context(this.tagName, matcher, null, false);
+      const context = new Context(matcher.getCurrentTag(), matcher, null, false);
       const parsed = this.tagsPipeline.run(text, context);
       this.handlers.onText?.call(this, parsed);
     }
@@ -284,13 +287,13 @@ export class FastSaxBuilder {
    *   FXP's `parser.xmlDec` scratch object.
    */
   addDeclaration(name, attr) {
-    const xmlDecl = {
-      version: attr.version === 1.1 ? 1.1 : 1,
-      encoding: attr.encoding ?? undefined,
-      standalone: attr.standalone ?? undefined,
+    const xmlDec = {
+      version: attr.version,
+      encoding: attr.encoding || undefined,
+      standalone: attr.standalone || undefined,
     };
-    this.sharedContext?.set('xmlVersion', xmlDecl.version);
-    this.handlers.onXmlDeclaration?.call(this, xmlDecl);
+    this.sharedContext?.set('xmlVersion', xmlDec.version);
+    this.handlers.onXmlDeclaration?.call(this, xmlDec);
     this.attributes = {};
   }
 

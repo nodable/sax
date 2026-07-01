@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
-    "bench": "node bench/compare.js && node bench/compare-stopnodes.js"
+    "bench": "node bench/compare.js && node bench/compare-stopnodes.js && node bench/compare-stopnodes-enclosures.js"
   },
   "keywords": [
     "xml",
