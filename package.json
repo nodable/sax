@@ -1,21 +1,20 @@
 {
-  "name": "fast-sax-parser",
+  "name": "@nodable/sax",
   "version": "1.0.0",
   "description": "A SAX-style streaming XML parser built on @nodable/flexible-xml-parser. No tree, no DOM — just events.",
   "type": "module",
-  "main": "index.js",
+  "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "exports": {
-    ".": "./index.js"
+    ".": "./src/index.js"
   },
   "files": [
-    "index.js",
     "src",
     "README.md"
   ],
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
-    "bench": "node bench/compare.js && node bench/compare-stopnodes.js && node bench/compare-stopnodes-enclosures.js"
+    "bench": "node bench/compare.js"
   },
   "keywords": [
     "xml",
@@ -28,8 +27,7 @@
   "author": "Amit Gupta (https://solothought.com)",
   "license": "MIT",
   "dependencies": {
-    "@nodable/base-output-builder": "^2.0.0",
-    "@nodable/flexible-xml-parser": "^1.6.1"
+    "@nodable/flexible-xml-parser": "^1.9.0"
   },
   "devDependencies": {
     "sax": "^1.6.0",
@@ -46,6 +44,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nodable/fast-sax-parser.git"
+    "url": "git+https://github.com/nodable/sax.git"
   }
 }

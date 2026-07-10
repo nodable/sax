@@ -1,6 +1,6 @@
 'use strict';
 
-import { FastSaxParser } from '../index.js';
+import { SaxParser } from '../src/index.js';
 
 const xml = `<?xml version="1.0"?>
 <catalog>
@@ -17,7 +17,7 @@ const xml = `<?xml version="1.0"?>
 
 let depth = 0;
 
-const fsp = new FastSaxParser({
+const parser = new SaxParser({
   fxpOptions: {
     skip: { attributes: false },
   },
@@ -52,8 +52,8 @@ const fsp = new FastSaxParser({
     console.log('--- document complete ---');
     // Also readable after the fact as a property (saxes-style parity) —
     // equivalent to what onXmlDeclaration already printed above.
-    console.log('fsp.xmlDecl:', fsp.xmlDecl);
+    console.log('parser.xmlDecl:', parser.xmlDecl);
   },
 });
 
-fsp.parse(xml);
+parser.parse(xml);

@@ -1,6 +1,6 @@
 'use strict';
 
-import { FastSaxParser } from '../index.js';
+import { SaxParser } from '../src/index.js';
 
 // Deliberately split mid-tag and mid-text to demonstrate FXP's chunk-boundary
 // safety — FSP doesn't need any extra logic for this, it's inherited for free.
@@ -12,7 +12,7 @@ const chunks = [
   '>second</item></root>',
 ];
 
-const fsp = new FastSaxParser({
+const parser = new SaxParser({
   fxpOptions: {
     skip: { attributes: false },
   },
@@ -31,6 +31,6 @@ const fsp = new FastSaxParser({
 });
 
 for (const chunk of chunks) {
-  fsp.write(chunk);
+  parser.write(chunk);
 }
-fsp.end();
+parser.end();

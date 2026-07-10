@@ -1,5 +1,11 @@
 'use strict';
 
+// import fs from "fs"
+// import path from "path"
+// import { dirname } from 'node:path';
+// import { fileURLToPath } from 'node:url';
+// const __dirname = dirname(fileURLToPath(import.meta.url));
+
 /**
  * Generate a flat XML document with `n` sibling elements.
  * Each element has `attrCount` attributes and a text body.
@@ -27,6 +33,7 @@ export function makeDeep(depth, breadth = 2) {
     const children = Array.from({ length: breadth }, () => nest(d - 1)).join('');
     return `<${tag}>${children}</${tag}>`;
   }
+  // console.log(nest(depth))
   return `<?xml version="1.0"?><root>${nest(depth)}</root>`;
 }
 
@@ -97,4 +104,35 @@ export function makeHtmlWithScripts(scriptCount) {
   }
   xml += '</body></html>';
   return xml;
+}
+
+export function loadXml() {
+  //return fs.readFileSync(path.join(__dirname, 'mini-sample.xml')).toString();
+  // saxes 2x
+  // return "<l0><l1><l2><l3><l4><l5><l6><l7><l8><l9></l9></l8></l7></l6></l5></l4></l3></l2></l1></l0>"
+  //saxes 3x
+  // return `
+  // <l0>
+  //   <l1>
+  //     <l2>
+  //       <l3>
+  //         <l4>
+  //           <l5>
+  //             <l6>
+  //               <l7>
+  //                 <l8>
+  //                   <l9>
+  //                   </l9>
+  //                 </l8>
+  //               </l7>
+  //             </l6>
+  //           </l5>
+  //         </l4>
+  //       </l3>
+  //     </l2>
+  //   </l1>
+  // </l0>`
+
+  // return `<root>${"<ns:child>text</ns:child>".repeat(20)}</root>`
+  return `<root>${"<child>text</child>".repeat(20)}</root>`
 }

@@ -1,5 +1,5 @@
 /**
- * Benchmark: fast-sax-parser vs sax vs saxes
+ * Benchmark: @nodable/sax vs sax vs saxes
  *
  * Measures wall-clock time for N iterations of a full parse, across varied
  * document shapes (flat/attribute-heavy/deep/mixed).
@@ -15,9 +15,10 @@
 import { performance } from 'perf_hooks';
 import sax from 'sax';
 import { SaxesParser } from 'saxes';
-import { FastSaxParser } from '../index.js';
-import { makeFlat, makeDeep, makeMixed, makeSvg } from './fixtures.js';
+import { SaxParser } from '../src/index.js';
+import { makeFlat, makeDeep, makeMixed, makeSvg, loadXml } from './fixtures.js';
 
+global.attempts = 0;
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const WARMUP = 50;   // iterations to discard
@@ -25,15 +26,17 @@ const ITERS = 500;  // measured iterations
 
 // ─── Parser factories ─────────────────────────────────────────────────────────
 
-function makeFsp() {
+function makeNodableSax() {
   // Mirrors realistic usage: start/text/end handlers only, no valueParsers
   // (empty chains = fast path). skip.attributes: false to parse element attrs.
   let starts = 0, texts = 0, ends = 0;
-  const p = new FastSaxParser({
+  const p = new SaxParser({
     fxpOptions: {
+      onDangerousProperty: false,
+      sanitizeNames: false,
       skip: {
-        attributes: true,
-        nsPrefix: true,
+        attributes: false,
+        nsPrefix: false,
         whitespaceText: false
       },
       attributes: {
@@ -45,7 +48,7 @@ function makeFsp() {
     onText() { texts++; },
     onEndElement() { ends++; },
   });
-  return { name: 'fast-sax-parser', parse: (xml) => p.parse(xml), counts: () => ({ starts, texts, ends }) };
+  return { name: '@nodable/sax', parse: (xml) => p.parse(xml), counts: () => ({ starts, texts, ends }) };
 }
 
 function makeSax() {
@@ -70,6 +73,9 @@ function makeSaxes() {
   p.on('opentag', () => starts++);
   p.on('text', () => texts++);
   p.on('closetag', () => ends++);
+  p.on('error', () => { });
+  p.on('cdata', () => { });
+  p.on('comment', () => { });
   return {
     name: 'saxes',
     parse: (xml) => { p.write(xml); p.close(); },
@@ -78,6 +84,7 @@ function makeSaxes() {
 }
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
+
 
 function bench(label, xml, parsers) {
   const kbSize = (Buffer.byteLength(xml, 'utf8') / 1024).toFixed(1);
@@ -101,48 +108,55 @@ function bench(label, xml, parsers) {
 
 console.log(`Node ${process.version}   warmup=${WARMUP}   measured=${ITERS}`);
 
+
+bench(
+  'mini-sample.xml',
+  loadXml(),
+  [makeSaxes(), makeNodableSax(), makeSax()],
+);
+
 // Flat: many siblings, each with 2 attrs and text — bread-and-butter feed
 bench(
   'Flat 500 elements (2 attrs + text each)',
   makeFlat(500, 2),
-  [makeFsp(), makeSax(), makeSaxes()],
+  [makeNodableSax(), makeSaxes(), makeSax()],
 );
 
 // Flat large: stress higher element counts
 bench(
   'Flat 2000 elements (2 attrs + text each)',
   makeFlat(2000, 2),
-  [makeFsp(), makeSax(), makeSaxes()],
+  [makeNodableSax(), makeSaxes(), makeSax()],
 );
 
 // Flat attribute-heavy: more attribute work per element
 bench(
   'Flat 500 elements (8 attrs + text each)',
   makeFlat(500, 8),
-  [makeFsp(), makeSax(), makeSaxes()],
+  [makeNodableSax(), makeSaxes(), makeSax()],
 );
 
 // Deep: stresses push/pop state, not element count
 bench(
   'Deep nesting depth=10 breadth=2',
   makeDeep(10, 2),
-  [makeFsp(), makeSax(), makeSaxes()],
+  [makeNodableSax(), makeSaxes(), makeSax()],
 );
 
 // Mixed: comments, CDATA, PIs alongside elements, plus unpaired <br> tags
 
 console.log("SAX and SAXES doesn't support unpaired tags")
 bench(
-  'Mixed 300 elements (comments + CDATA + unpaired)',
+  'Mixed 300 elements (comments + CDATA)',
   makeMixed(300),
-  [makeFsp(), makeSax(), makeSaxes()],
+  [makeNodableSax(), makeSaxes(), makeSax()],
 );
 
 // SVG-shaped: xmlns, deep <g> nesting, long `d` attribute values
 bench(
   'SVG 300 paths (depth=4, pathLength=40)',
   makeSvg(300, 4, 40),
-  [makeFsp(), makeSax(), makeSaxes()],
+  [makeNodableSax(), makeSaxes(), makeSax()],
 );
 
 // SVG stress: fewer paths but much longer `d` values — isolates
@@ -150,5 +164,13 @@ bench(
 bench(
   'SVG 50 paths, very long d attrs (pathLength=500)',
   makeSvg(50, 4, 500),
-  [makeFsp(), makeSax(), makeSaxes()],
+  [makeNodableSax(), makeSaxes(), makeSax()],
 );
+
+bench(
+  'SVG 50 paths, very long d attrs (pathLength=500)',
+  makeSvg(50, 4, 500),
+  [makeSaxes(), makeNodableSax(), makeSax()],
+);
+
+

@@ -1,6 +1,6 @@
 'use strict';
 
-import { FastSaxParser } from '../index.js';
+import { SaxParser } from '../src/index.js';
 
 // Use stopNodes to grab a subtree's raw, unparsed XML in one shot instead of
 // walking every nested tag through onStartElement/onText/onEndElement.
@@ -13,7 +13,7 @@ const xml = `<feed>
   </entry>
 </feed>`;
 
-const fsp = new FastSaxParser({
+const parser = new SaxParser({
   fxpOptions: {
     skip: { attributes: false },
     tags: { stopNodes: ['feed.entry.payload'] },
@@ -32,4 +32,4 @@ const fsp = new FastSaxParser({
   },
 });
 
-fsp.parse(xml);
+parser.parse(xml);

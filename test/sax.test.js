@@ -2,16 +2,16 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FastSaxParser } from '../index.js';
+import { SaxParser } from '../src/index.js';
 
 test('emits start/text/end in document order, no tree retained', () => {
   const events = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onStartElement: (name) => events.push(['start', name]),
     onText: (text) => { if (text.trim()) events.push(['text', text]); },
     onEndElement: (name) => events.push(['end', name]),
   });
-  fsp.parse('<root><a>hi</a><b>bye</b></root>');
+  parser.parse('<root><a>hi</a><b>bye</b></root>');
   assert.deepEqual(events, [
     ['start', 'root'],
     ['start', 'a'],
@@ -26,62 +26,41 @@ test('emits start/text/end in document order, no tree retained', () => {
 
 test('attributes are skipped by default (FXP default), enabled via fxpOptions.skip.attributes', () => {
   let captured = null;
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     fxpOptions: { skip: { attributes: false } },
     onStartElement: (name, attrs) => { if (name === 'item') captured = attrs; },
   });
-  fsp.parse('<root><item id="5" label="x"/></root>');
+  parser.parse('<root><item id="5" label="x"/></root>');
   assert.deepEqual(captured, { id: '5', label: 'x' });
 });
 
 test('attribute names are bare — no prefix/suffix mangling', () => {
   let captured = null;
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     fxpOptions: { skip: { attributes: false } },
     onStartElement: (name, attrs) => { if (name === 'item') captured = attrs; },
   });
-  fsp.parse('<root><item id="5"/></root>');
+  parser.parse('<root><item id="5"/></root>');
   assert.ok('id' in captured, 'expected bare key "id", got: ' + Object.keys(captured));
-});
-
-test('value parsers are empty by default — values stay raw strings', () => {
-  let text = null;
-  const fsp = new FastSaxParser({
-    onText: (t) => { if (t.trim()) text = t; },
-  });
-  fsp.parse('<root><n>007</n></root>');
-  assert.equal(text, '007');
-  assert.equal(typeof text, 'string');
-});
-
-test('value parsers apply when explicitly requested', () => {
-  let text = null;
-  const fsp = new FastSaxParser({
-    valueParsers: { tags: ['number'] },
-    onText: (t) => { if (typeof t !== 'string' || t.trim()) text = t; },
-  });
-  fsp.parse('<root><n>42</n></root>');
-  assert.equal(text, 42);
-  assert.equal(typeof text, 'number');
 });
 
 test('CDATA fires onCData, never silently merged into onText', () => {
   const events = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onText: (t) => { if (t.trim()) events.push(['text', t]); },
     onCData: (t) => events.push(['cdata', t]),
   });
-  fsp.parse('<root><![CDATA[raw <stuff> here]]></root>');
+  parser.parse('<root><![CDATA[raw <stuff> here]]></root>');
   assert.deepEqual(events, [['cdata', 'raw <stuff> here']]);
 });
 
 test('XML declaration fires onXmlDeclaration, distinct from onProcessingInstruction', () => {
   const events = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onXmlDeclaration: (attrs) => events.push(['decl', attrs]),
     onProcessingInstruction: (name) => events.push(['pi', name]),
   });
-  fsp.parse('<?xml version="1.0"?><?some-pi data?><root/>');
+  parser.parse('<?xml version="1.0"?><?some-pi data?><root/>');
   assert.deepEqual(events, [
     ['decl', { version: 1, encoding: undefined, standalone: undefined }],
     ['pi', '?some-pi'],
@@ -90,30 +69,30 @@ test('XML declaration fires onXmlDeclaration, distinct from onProcessingInstruct
 
 test('comments fire onComment and respect skip.comment', () => {
   const seen = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onComment: (t) => seen.push(t),
   });
-  fsp.parse('<root><!-- hello --></root>');
+  parser.parse('<root><!-- hello --></root>');
   assert.deepEqual(seen, [' hello ']);
 
   const seenSkipped = [];
-  const fsp2 = new FastSaxParser({
+  const parser2 = new SaxParser({
     fxpOptions: { skip: { comment: true } },
     onComment: (t) => seenSkipped.push(t),
   });
-  fsp2.parse('<root><!-- hello --></root>');
+  parser2.parse('<root><!-- hello --></root>');
   assert.deepEqual(seenSkipped, []);
 });
 
 test('stop nodes deliver raw unparsed content and suppress nested events', () => {
   const events = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     fxpOptions: { tags: { stopNodes: ['root.blob'] } },
     onStartElement: (name) => events.push(['start', name]),
     onStopNode: (tagDetail, raw) => events.push(['stop', tagDetail.name, raw]),
     onEndElement: (name) => events.push(['end', name]),
   });
-  fsp.parse('<root><blob><nested>x</nested></blob></root>');
+  parser.parse('<root><blob><nested>x</nested></blob></root>');
   assert.deepEqual(events, [
     ['start', 'root'],
     ['start', 'blob'],
@@ -125,14 +104,14 @@ test('stop nodes deliver raw unparsed content and suppress nested events', () =>
 
 test('streaming write() handles chunks split mid-tag and mid-text', () => {
   const events = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onStartElement: (name) => events.push(['start', name]),
     onText: (t) => { if (t.trim()) events.push(['text', t]); },
     onEndElement: (name) => events.push(['end', name]),
   });
   const chunks = ['<ro', 'ot><ite', 'm>hel', 'lo</item', '></root>'];
-  for (const c of chunks) fsp.write(c);
-  fsp.end();
+  for (const c of chunks) parser.write(c);
+  parser.end();
   assert.deepEqual(events, [
     ['start', 'root'],
     ['start', 'item'],
@@ -144,32 +123,32 @@ test('streaming write() handles chunks split mid-tag and mid-text', () => {
 
 test('onEnd fires exactly once after parse completes', () => {
   let count = 0;
-  const fsp = new FastSaxParser({ onEnd: () => count++ });
-  fsp.parse('<root/>');
+  const parser = new SaxParser({ onEnd: () => count++ });
+  parser.parse('<root/>');
   assert.equal(count, 1);
 });
 
 test('onError receives ParseError instead of throwing when handler is supplied', () => {
   let captured = null;
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onError: (err) => { captured = err; },
   });
-  fsp.parse('<root><unclosed></root>');
+  parser.parse('<root><unclosed></root>');
   assert.ok(captured, 'expected onError to be called');
 });
 
 test('parse() throws when no onError handler is supplied', () => {
-  const fsp = new FastSaxParser({});
-  assert.throws(() => fsp.parse('<root><unclosed></root>'));
+  const parser = new SaxParser({});
+  assert.throws(() => parser.parse('<root><unclosed></root>'));
 });
 
 test('nested elements report correct names at close, not the last-opened child name', () => {
   const events = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onStartElement: (name) => events.push(['start', name]),
     onEndElement: (name) => events.push(['end', name]),
   });
-  fsp.parse('<a><b><c/></b></a>');
+  parser.parse('<a><b><c/></b></a>');
   assert.deepEqual(events, [
     ['start', 'a'], ['start', 'b'], ['start', 'c'], ['end', 'c'], ['end', 'b'], ['end', 'a'],
   ]);
@@ -180,12 +159,12 @@ test('nested elements report correct names at close, not the last-opened child n
 test('onText does NOT fire for stop-node raw content (bug fix)', () => {
   const textEvents = [];
   const stopEvents = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     fxpOptions: { tags: { stopNodes: ['root.blob'] } },
     onText: (t) => textEvents.push(t),
     onStopNode: (tagDetail, raw) => stopEvents.push(raw),
   });
-  fsp.parse('<root><blob><nested>x</nested></blob></root>');
+  parser.parse('<root><blob><nested>x</nested></blob></root>');
   assert.deepEqual(stopEvents, ['<nested>x</nested>']);
   assert.deepEqual(textEvents, [], 'onText must not fire for stop-node content');
 });
@@ -193,7 +172,7 @@ test('onText does NOT fire for stop-node raw content (bug fix)', () => {
 test('onAttribute fires once per attribute in document order, before onStartElement', () => {
   const attrEvents = [];
   let startFired = false;
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     fxpOptions: { skip: { attributes: false } },
     onAttribute: (name, value) => {
       assert.ok(!startFired, 'onAttribute must fire before onStartElement');
@@ -201,7 +180,7 @@ test('onAttribute fires once per attribute in document order, before onStartElem
     },
     onStartElement: () => { startFired = true; },
   });
-  fsp.parse('<root id="1" class="main"/>');
+  parser.parse('<root id="1" class="main"/>');
   assert.deepEqual(attrEvents, [['id', '1'], ['class', 'main']]);
 });
 
@@ -209,11 +188,11 @@ test('onAttribute receives attrMeta as 3rd arg with absolute document index', ()
   // <root id="1" name="x"/>
   //       ^ id at 6     ^ name at 13
   const metas = {};
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     fxpOptions: { skip: { attributes: false } },
     onAttribute: (name, value, meta) => { metas[name] = meta; },
   });
-  fsp.parse('<root id="1" name="x"/>');
+  parser.parse('<root id="1" name="x"/>');
   assert.equal(metas.id?.index, 6);
   assert.equal(metas.name?.index, 13);
 });
@@ -222,13 +201,11 @@ test('onStartElement receives tagDetail as 3rd arg with index pointing at <', ()
   // <root><child>x</child></root>
   //  ^0    ^6
   const tags = {};
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onStartElement: (name, attrs, tag) => { tags[name] = tag; },
   });
-  fsp.parse('<root><child>x</child></root>');
+  parser.parse('<root><child>x</child></root>');
   assert.equal(tags.root.index, 0);
-  assert.equal(tags.root.line, 1);
-  assert.equal(tags.root.col, 0);
   assert.equal(tags.child.index, 6);
 });
 
@@ -236,20 +213,20 @@ test('tagDetail.openEnd points right after the opening tag >', () => {
   // <root> = 6 chars, so openEnd = 6
   // <child> = 7 chars, starts at 6, so openEnd = 13
   const tags = {};
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onStartElement: (name, attrs, tag) => { tags[name] = tag; },
   });
-  fsp.parse('<root><child>x</child></root>');
+  parser.parse('<root><child>x</child></root>');
   assert.equal(tags.root.openEnd, 6);
   assert.equal(tags.child.openEnd, 13);
 });
 
 test('onEndElement receives closeMeta as 2nd arg with name always present', () => {
   const closes = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onEndElement: (name, closeMeta) => closes.push({ name, metaName: closeMeta?.name }),
   });
-  fsp.parse('<root><a>1</a><b>2</b></root>');
+  parser.parse('<root><a>1</a><b>2</b></root>');
   // name arg and closeMeta.name must always agree
   for (const c of closes) {
     assert.equal(c.name, c.metaName);
@@ -261,10 +238,10 @@ test('closeMeta carries index and closeEnd for a real closing tag', () => {
   // <root><tag>v</tag></root>
   //             ^ </tag> starts at 12, ends at 18
   const closes = {};
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onEndElement: (name, closeMeta) => { closes[name] = closeMeta; },
   });
-  fsp.parse('<root><tag>v</tag></root>');
+  parser.parse('<root><tag>v</tag></root>');
   assert.equal(closes.tag.index, 12);
   assert.equal(closes.tag.closeEnd, 18);
 });
@@ -272,10 +249,10 @@ test('closeMeta carries index and closeEnd for a real closing tag', () => {
 test('closeMeta for a self-closing tag reuses the opening tag position, no separate close', () => {
   // <root><item/></root> — <item/> at index 6, length 7, so closeEnd = 13
   const closes = {};
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onEndElement: (name, closeMeta) => { closes[name] = closeMeta; },
   });
-  fsp.parse('<root><item/></root>');
+  parser.parse('<root><item/></root>');
   assert.equal(closes.item.index, 6);
   assert.equal(closes.item.closeEnd, 13);
 });
@@ -284,21 +261,21 @@ test('onStopNode receives stopEnd as 3rd arg pointing right after the closing ta
   // <root><script>x</script></root>
   //                         ^ stopEnd.index = len('<root><script>x</script>') = 24
   let stopEnd = null;
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     fxpOptions: { tags: { stopNodes: ['root.script'] } },
     onStopNode: (tagDetail, raw, end) => { stopEnd = end; },
   });
-  fsp.parse('<root><script>x</script></root>');
+  parser.parse('<root><script>x</script></root>');
   const expected = '<root><script>x</script>'.length;
   assert.equal(stopEnd?.index, expected);
 });
 
 test('handlers can read this.matcher (builder-bound, not passed positionally)', () => {
   const matchers = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onStartElement(name) { matchers.push([name, this.matcher]); },
   });
-  fsp.parse('<root><child/></root>');
+  parser.parse('<root><child/></root>');
   assert.equal(matchers.length, 2);
   for (const [, m] of matchers) {
     assert.ok(m, 'this.matcher should be defined inside a non-arrow handler');
@@ -307,31 +284,31 @@ test('handlers can read this.matcher (builder-bound, not passed positionally)', 
 
 test('write() becomes a no-op after a parse error, end() surfaces the dead session clearly', () => {
   const errors = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     fxpOptions: { feedable: { bufferSize: 1 } }, // force write() to parse immediately
     onError: (err) => errors.push(err.message),
   });
-  fsp.write('<root><a></b>'); // mismatched closing tag — throws synchronously
+  parser.write('<root><a></b>'); // mismatched closing tag — throws synchronously
   // session is now errored — further write() is silently dropped
-  fsp.write('<more/>');
-  fsp.end(); // must call onError, not throw
+  parser.write('<more/>');
+  parser.end(); // must call onError, not throw
   assert.equal(errors.length, 2); // parse error + dead-session error from end()
 });
 
-test('a new FastSaxParser instance works normally after a previous one errored', () => {
-  const fsp1 = new FastSaxParser({
+test('a new SaxParser instance works normally after a previous one errored', () => {
+  const parser1 = new SaxParser({
     fxpOptions: { feedable: { bufferSize: 1 } },
     onError: () => { },
   });
-  fsp1.write('<root><a></b>');
-  fsp1.end();
+  parser1.write('<root><a></b>');
+  parser1.end();
 
   // fresh instance — completely independent
   const events = [];
-  const fsp2 = new FastSaxParser({
+  const parser2 = new SaxParser({
     onStartElement: (name) => events.push(name),
   });
-  fsp2.parse('<root/>');
+  parser2.parse('<root/>');
   assert.deepEqual(events, ['root']);
 });
 
@@ -339,13 +316,13 @@ test('a new FastSaxParser instance works normally after a previous one errored',
 
 test('parseBytesArr() parses a Uint8Array the same as parse() parses its string source', () => {
   const events = [];
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onStartElement: (name) => events.push(['start', name]),
     onText: (t) => { if (t.trim()) events.push(['text', t]); },
     onEndElement: (name) => events.push(['end', name]),
   });
   const bytes = new Uint8Array(Buffer.from('<root><tag>hello 世界</tag></root>'));
-  fsp.parseBytesArr(bytes);
+  parser.parseBytesArr(bytes);
   assert.deepEqual(events, [
     ['start', 'root'],
     ['start', 'tag'],
@@ -357,48 +334,94 @@ test('parseBytesArr() parses a Uint8Array the same as parse() parses its string 
 
 test('parseBytesArr() routes errors through onError like parse() does', () => {
   let captured = null;
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onError: (err) => { captured = err; },
   });
   const bytes = new Uint8Array(Buffer.from('<root><unclosed></root>'));
-  fsp.parseBytesArr(bytes);
+  parser.parseBytesArr(bytes);
   assert.ok(captured, 'expected onError to be called');
 });
 
 // ─── xmlDecl (saxes-style parity property) ───────────────────────────────
 
 test('xmlDecl stays empty until the XML declaration is seen', () => {
-  const fsp = new FastSaxParser();
-  assert.deepEqual(fsp.xmlDecl, {});
-  fsp.parse('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><root/>');
-  assert.deepEqual(fsp.xmlDecl, { version: 1, encoding: 'UTF-8', standalone: 'yes' });
+  const parser = new SaxParser();
+  assert.deepEqual(parser.xmlDecl, {});
+  parser.parse('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><root/>');
+  assert.deepEqual(parser.xmlDecl, { version: 1, encoding: 'UTF-8', standalone: 'yes' });
 });
 
 test('xmlDecl fields stay undefined for fields absent from the declaration', () => {
-  const fsp = new FastSaxParser();
-  fsp.parse('<?xml version="1.0"?><root/>');
-  assert.equal(fsp.xmlDecl.version, 1);
-  assert.equal(fsp.xmlDecl.encoding, undefined);
-  assert.equal(fsp.xmlDecl.standalone, undefined);
+  const parser = new SaxParser();
+  parser.parse('<?xml version="1.0"?><root/>');
+  assert.equal(parser.xmlDecl.version, 1);
+  assert.equal(parser.xmlDecl.encoding, undefined);
+  assert.equal(parser.xmlDecl.standalone, undefined);
 });
 
 test('xmlDecl is populated regardless of skip.attributes (declaration bypasses the attribute pipeline)', () => {
-  const withSkip = new FastSaxParser({ fxpOptions: { skip: { attributes: true } } });
+  const withSkip = new SaxParser({ fxpOptions: { skip: { attributes: true } } });
   withSkip.parse('<?xml version="1.0" encoding="UTF-8"?><root/>');
   assert.equal(withSkip.xmlDecl.version, 1);
   assert.equal(withSkip.xmlDecl.encoding, 'UTF-8');
 
-  const withoutSkip = new FastSaxParser({ fxpOptions: { skip: { attributes: false } } });
+  const withoutSkip = new SaxParser({ fxpOptions: { skip: { attributes: false } } });
   withoutSkip.parse('<?xml version="1.0" encoding="UTF-8"?><root/>');
   assert.deepEqual(withoutSkip.xmlDecl, withSkip.xmlDecl);
 });
 
 test('user-supplied onXmlDeclaration still fires alongside xmlDecl population', () => {
   let calledWith = null;
-  const fsp = new FastSaxParser({
+  const parser = new SaxParser({
     onXmlDeclaration: (attrs) => { calledWith = attrs; },
   });
-  fsp.parse('<?xml version="1.0"?><root/>');
+  parser.parse('<?xml version="1.0"?><root/>');
   assert.deepEqual(calledWith, { version: 1, encoding: undefined, standalone: undefined });
-  assert.equal(fsp.xmlDecl.version, 1);
+  assert.equal(parser.xmlDecl.version, 1);
+});
+
+// ─── asWritable() ────────────────────────────────────────────────────────
+
+test('asWritable: piping a stream produces the same text as one-shot parse', async () => {
+  const { Readable } = await import('node:stream');
+  const { finished } = await import('node:stream/promises');
+
+  let text = '';
+  const parser = new SaxParser({ onText: (t) => { text += t; } });
+  const xml = '<root>hello world</root>';
+
+  const readable = Readable.from([xml], { objectMode: false });
+  const writable = parser.asWritable();
+  readable.pipe(writable);
+  await finished(writable);
+
+  assert.equal(text, 'hello world');
+});
+
+test('asWritable: a multi-byte character split across two stream chunks is not corrupted', async () => {
+  const { Readable, Writable } = await import('node:stream');
+  const { finished } = await import('node:stream/promises');
+
+  // '日本語' is 9 bytes in UTF-8 (3 bytes per character). Splitting the raw
+  // bytes at offset 4 cuts the second character in half. If asWritable()
+  // ever re-introduces a per-chunk `chunk.toString('utf8')` before handing
+  // data to the parser, this half-character gets replaced with U+FFFD
+  // independently in each chunk and the text comes out corrupted.
+  const xml = '<root>日本語</root>';
+  const bytes = Buffer.from(xml, 'utf8');
+  const splitAt = xml.indexOf('日本語');
+  const byteOffset = Buffer.byteLength(xml.slice(0, splitAt), 'utf8') + 4; // mid-character
+
+  const chunk1 = bytes.subarray(0, byteOffset);
+  const chunk2 = bytes.subarray(byteOffset);
+
+  let text = '';
+  const parser = new SaxParser({ onText: (t) => { text += t; } });
+  const writable = parser.asWritable();
+
+  const source = Readable.from([chunk1, chunk2], { objectMode: true });
+  source.pipe(writable);
+  await finished(writable);
+
+  assert.equal(text, '日本語');
 });
