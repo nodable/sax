@@ -18,6 +18,8 @@
   },
   "keywords": [
     "xml",
+    "safe",
+    "html",
     "sax",
     "parser",
     "stream",
@@ -26,6 +28,9 @@
   ],
   "author": "Amit Gupta (https://solothought.com)",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@nodable/flexible-xml-parser": "^1.9.0"
   },

@@ -113,7 +113,7 @@ export class SaxBuilder {
 
   /** Called even when skip.declaration is true. */
   addInputEntities(entities) {
-    this.handlers.onDocTypeEntities?.call(this, entities);
+    this.handlers.onDocType?.call(this, entities);
   }
 
   /**

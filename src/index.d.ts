@@ -54,7 +54,7 @@ export interface SaxHandlers {
   onXmlDeclaration?(this: SaxBuilder, attrs: XmlDeclaration): void;
   onStopNode?(this: SaxBuilder, tagDetail: TagDetail, rawContent: string, stopEnd: StopEnd): void;
   onExit?(this: SaxBuilder, exitInfo: ExitInfo): void;
-  onDocTypeEntities?(this: SaxBuilder, entities: Record<string, string>): void;
+  onDocType?(this: SaxBuilder, entities: Record<string, string>): void;
   onError?(err: Error): void;
   onEnd?(this: SaxBuilder): void;
 }
