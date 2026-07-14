@@ -1,6 +1,6 @@
 {
   "name": "@nodable/sax",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Fast, Safe, Ready to Use SAX supporting Stream, incomplete input, early exit and more",
   "type": "module",
   "main": "./src/index.js",
