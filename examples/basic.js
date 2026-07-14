@@ -8,6 +8,7 @@ const xml = `<?xml version="1.0"?>
   <book id="bk101" inStock="true">
     <title>XML Developer's Guide</title>
     <price>44.95</price>
+    <![CDATA[ raw <stuff> here]]>
   </book>
   <book id="bk102" inStock="false">
     <title>Midnight Rain</title>
@@ -37,6 +38,9 @@ const parser = new SaxParser({
   },
   onComment(text) {
     console.log('  '.repeat(depth) + `comment: "${text.trim()}"`);
+  },
+  onCData(text) {
+    console.log('  '.repeat(depth) + `cdata: "${text.trim()}"`);
   },
   onEndElement(name, closeMeta) {
     depth--;

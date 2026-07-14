@@ -109,38 +109,42 @@ function bench(label, xml, parsers) {
 console.log(`Node ${process.version}   warmup=${WARMUP}   measured=${ITERS}`);
 
 
-bench(
-  'mini-sample.xml',
-  loadXml(),
-  [makeSaxes(), makeNodableSax(), makeSax()],
-);
+// bench(
+//   'mini-sample.xml',
+//   loadXml(),
+//   [makeSaxes(), makeNodableSax(), makeSax()],
+// );
 
 // Flat: many siblings, each with 2 attrs and text — bread-and-butter feed
 bench(
   'Flat 500 elements (2 attrs + text each)',
   makeFlat(500, 2),
-  [makeNodableSax(), makeSaxes(), makeSax()],
+  //[makeNodableSax(), makeSaxes(), makeSax()],
+  [makeNodableSax(), makeSax()],
 );
 
 // Flat large: stress higher element counts
 bench(
   'Flat 2000 elements (2 attrs + text each)',
   makeFlat(2000, 2),
-  [makeNodableSax(), makeSaxes(), makeSax()],
+  //[makeNodableSax(), makeSaxes(), makeSax()],
+  [makeNodableSax(), makeSax()],
 );
 
 // Flat attribute-heavy: more attribute work per element
 bench(
   'Flat 500 elements (8 attrs + text each)',
   makeFlat(500, 8),
-  [makeNodableSax(), makeSaxes(), makeSax()],
+  //[makeNodableSax(), makeSaxes(), makeSax()],
+  [makeNodableSax(), makeSax()],
 );
 
 // Deep: stresses push/pop state, not element count
 bench(
   'Deep nesting depth=10 breadth=2',
   makeDeep(10, 2),
-  [makeNodableSax(), makeSaxes(), makeSax()],
+  //[makeNodableSax(), makeSaxes(), makeSax()],
+  [makeNodableSax(), makeSax()],
 );
 
 // Mixed: comments, CDATA, PIs alongside elements, plus unpaired <br> tags
@@ -149,14 +153,16 @@ console.log("SAX and SAXES doesn't support unpaired tags")
 bench(
   'Mixed 300 elements (comments + CDATA)',
   makeMixed(300),
-  [makeNodableSax(), makeSaxes(), makeSax()],
+  //[makeNodableSax(), makeSaxes(), makeSax()],
+  [makeNodableSax(), makeSax()],
 );
 
 // SVG-shaped: xmlns, deep <g> nesting, long `d` attribute values
 bench(
   'SVG 300 paths (depth=4, pathLength=40)',
   makeSvg(300, 4, 40),
-  [makeNodableSax(), makeSaxes(), makeSax()],
+  //[makeNodableSax(), makeSaxes(), makeSax()],
+  [makeNodableSax(), makeSax()],
 );
 
 // SVG stress: fewer paths but much longer `d` values — isolates
@@ -164,7 +170,8 @@ bench(
 bench(
   'SVG 50 paths, very long d attrs (pathLength=500)',
   makeSvg(50, 4, 500),
-  [makeNodableSax(), makeSaxes(), makeSax()],
+  //[makeNodableSax(), makeSaxes(), makeSax()],
+  [makeNodableSax(), makeSax()],
 );
 
 bench(
