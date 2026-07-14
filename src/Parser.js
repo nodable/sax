@@ -13,7 +13,7 @@ import SaxBuilderFactory from './Builder.js';
 export class SaxParser {
   /** @param {import('./index.d.ts').SaxParserOptions} [options] */
   constructor(options = {}) {
-    const { fxpOptions = {}, ...handlers } = options;
+    const { fxpOptions = {}, valueParsers, ...handlers } = options;
 
     this._handlers = handlers;
     this._feeding = false;
@@ -39,12 +39,26 @@ export class SaxParser {
       if (userOnXmlDeclaration) userOnXmlDeclaration.call(this, attrs);
     };
 
-    const factory = new SaxBuilderFactory({ handlers });
+    const factory = new SaxBuilderFactory({ handlers, valueParsers });
+    this._builderFactory = factory;
 
     this._parser = new XMLParser({
       ...fxpOptions,
       OutputBuilder: factory,
     });
+  }
+
+  /**
+   * Add or replace a named value parser (e.g. swap the default 'entity'
+   * parser for one with custom `namedEntities`/`onInputEntity`, or register
+   * a new name entirely). Takes effect for all documents parsed after this
+   * call. See `@nodable/base-output-builder`'s `BaseValueParser` to write a
+   * custom one.
+   * @param {string} name
+   * @param {import('./index.d.ts').ValueParser} parserInstance
+   */
+  registerValueParser(name, parserInstance) {
+    this._builderFactory.registerValueParser(name, parserInstance);
   }
 
   /**

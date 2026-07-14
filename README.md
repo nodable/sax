@@ -80,12 +80,13 @@ Every handler below is invoked with `this` bound to the internal builder instanc
 | Option                    | Type                                       | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ------------------------- | ------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `fxpOptions`              | `object`                                   | `{}`    | Forwarded verbatim as `XMLParser`'s parser options — `tags.stopNodes`, `skip.*`, `limits.*`, `autoClose`, `doctypeOptions`, `feedable.*`, etc. check [FXP Options](https://github.com/nodable/flexible-xml-parser/blob/main/docs/02-options.md                                                                                                                                                                                                                     |
+| `valueParsers`            | `{ tags?, attributes?: Array<string\|ValueParser> }` | `{ tags: ['entity'], attributes: ['entity'] }` | Ordered value-parser chain run over tag text / attribute values before any handler sees them. Backed by `@nodable/base-output-builder`'s registry — built-in names: `'entity'`, `'ws'`, `'boolean'`, `'number'`, `'trim'`. Default decodes `&lt;`/`&#60;`-style references only (fixes raw entities leaking into `onText`/`onAttribute`); pass `[]` to opt back into fully raw values, or add `'boolean'`/`'number'` for compact-builder-style type coercion. Never applied to `onCData` or `onStopNode` content — both are always literal, per spec. Register custom parsers with `parser.registerValueParser(name, instance)`. |
 | `onAttribute`             | `(name, value, attrMeta) => void`          | —       | Fires once per attribute, in document order, **before** `onStartElement`. `value` is already run through the attribute value-parser chain. `attrMeta` is `{ index }` — the absolute document offset of the attribute name's first character. Does not fire at all when `fxpOptions.skip.attributes` is `true` (the default).                                                                                                                                       |
 | `onStartElement`          | `(name, attributes, tagDetail) => void`    | —       | Opening tag. `attributes` is a plain object — empty unless `fxpOptions.skip.attributes: false` — already run through the attribute value-parser chain (raw strings if you left the chain empty). `tagDetail` is `{ name, line, col, index, openEnd }` — `index` is the offset of the opening tag's `<`, `openEnd` is the offset right after its `>`.                                                                                                               |
 | `onEndElement`            | `(name, closeMeta) => void`                | —       | Closing tag. `closeMeta` is `{ name, line?, col?, index?, closeEnd? }` — `name` is always present and always agrees with the `name` argument; the position fields (`line`, `col`, `index`, `closeEnd`) are present only for a real closing tag and omitted for self-closing tags, autoClose-synthesized closes, unpaired tags, and stop-node-triggered closes.                                                                                                     |
 | `onText`                  | `(text) => void`                           | —       | A run of text content. Called once per FXP `addValue` — SaxParser does not pre-join text across multiple calls for the same element. Never fires for text inside a stop node's raw content — use `onStopNode` for that. Skipped entirely for whitespace-only runs when `fxpOptions.skip.whitespaceText` is `true` (the default).                                                                                                                                   |
 | `onCData`                 | `(text) => void`                           | —       | A `<![CDATA[...]]>` section. Always fires as its own event — never silently merged into `onText`, regardless of FXP's `nameFor.cdata` setting. Does not fire when `fxpOptions.skip.cdata` is `true`.                                                                                                                                                                                                                                                               |
-| `onDocType`               | `entities => void`                         |         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `onDocType`               | `entities => void`                         | —       | Fires once with the raw `<!ENTITY ...>` name→value map collected from a `<!DOCTYPE>` internal subset (already read-time-limited by FXP's `doctypeOptions.maxEntityCount`/`maxEntitySize`). Fires even when `fxpOptions.skip.declaration` is `true`. These entities are also fed to the `'entity'` value parser automatically — they'll resolve in subsequent `onText`/`onAttribute` values unless blocked by that parser's `onInputEntity` hook (default: blocks entities whose value looks unsafe, see `@nodable/entities`).                            |
 | `onComment`               | `(text) => void`                           | —       | A `<!-- ... -->` comment. Does not fire when `fxpOptions.skip.comment` is `true`.                                                                                                                                                                                                                                                                                                                                                                                  |
 | `onProcessingInstruction` | `(name, attributes) => void`               | —       | A `<?name ...?>` PI, excluding the XML declaration. Does not fire when `fxpOptions.skip.pi` is `true`.                                                                                                                                                                                                                                                                                                                                                             |
 | `onXmlDeclaration`        | `(attributes) => void`                     | —       | The `<?xml version="1.0" ...?>` declaration specifically — FXP dispatches this separately from ordinary PIs, so SaxParser exposes it separately too. `attributes` is `{ version, encoding?, standalone? }`, populated unconditionally (not gated by `fxpOptions.skip.attributes` — unlike ordinary element/PI attributes, the declaration's own fields come from FXP's dedicated declaration parsing). Does not fire when `fxpOptions.skip.declaration` is `true`. |
@@ -93,6 +94,40 @@ Every handler below is invoked with `this` bound to the internal builder instanc
 | `onExit`                  | `(exitInfo) => void`                       | —       | Fires when `fxpOptions.tags.exitIf` triggers early termination. `exitInfo` is `{ tagDetail, matcher, depth }` — `matcher` here is a normal argument, not `this.matcher`, since `onExit` is forwarded as-is from FXP's own `exitInfo` shape.                                                                                                                                                                                                                        |
 | `onError`                 | `(err) => void`                            | throws  | Called instead of throwing when `parse()`/`parseBytesArr()`/`write()`/`end()` encounter a `ParseError`. Not builder-bound — fired directly from `SaxParser`, outside any active matcher state. Omit to let errors throw normally.                                                                                                                                                                                                                                  |
 | `onEnd`                   | `() => void`                               | —       | Fires once parsing completes successfully.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+
+### Value parsing (entity decoding, etc.)
+
+`onText` and `onAttribute` values are run through a small, ordered value-parser
+chain before your handler sees them — the same chain type used by
+`@nodable/compact-builder` and friends, via `@nodable/base-output-builder`.
+
+```js
+import { SaxParser } from '@nodable/sax';
+
+const parser = new SaxParser({
+  onText(text) { console.log(text); },
+});
+parser.parse('<msg>Tom &amp; Jerry</msg>');
+// → "Tom & Jerry"   (was "Tom &amp; Jerry" verbatim in versions before this)
+```
+
+Default chain is `{ tags: ['entity'], attributes: ['entity'] }` — only entity
+references are decoded; numbers and booleans stay as strings, matching
+SaxParser's raw/low-level positioning. Change it via `valueParsers`, or
+register a custom parser (e.g. a differently-configured entity decoder, or
+your own):
+
+```js
+import { SaxParser } from '@nodable/sax';
+import { EntitiesValueParser, COMMON_HTML } from '@nodable/base-output-builder';
+
+const parser = new SaxParser({ onText(t) { /* ... */ } });
+parser.registerValueParser('entity', new EntitiesValueParser({ namedEntities: COMMON_HTML }));
+```
+
+> **Behavior change:** earlier versions never decoded entities at all —
+> `&lt;`/`&#60;` reached handlers verbatim. Pass `valueParsers: { tags: [], attributes: [] }`
+> to restore the old fully-raw behavior.
 
 ### `xmlDecl` (read after parsing)
 

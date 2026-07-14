@@ -63,6 +63,14 @@ export interface SaxParserOptions extends SaxHandlers {
   // Forwarded verbatim as XMLParser's parser options — tags.stopNodes,
   // skip.*, limits.*, autoClose, doctypeOptions, feedable.*, etc.
   fxpOptions?: Record<string, unknown>;
+  /**
+   * Ordered value-parser chain run over tag text / attribute values before
+   * they reach any handler. Backed by `@nodable/base-output-builder`'s
+   * registry — built-in names: 'entity', 'ws', 'boolean', 'number', 'trim'.
+   * Default: `{ tags: ['entity'], attributes: ['entity'] }` — decodes
+   * `&lt;`/`&#60;`-style references only. Pass `[]` to disable entirely.
+   * Register custom parsers via `SaxParser.registerValueParser()`.
+   */
   valueParsers?: {
     tags?: Array<string | ValueParser>;
     attributes?: Array<string | ValueParser>;
@@ -77,6 +85,8 @@ export class SaxParser {
   write(chunk: string | Buffer): this;
   end(): this;
   asWritable(streamOptions?: object): Writable;
+  /** Passthrough to the internal SaxBuilderFactory — see SaxBuilderFactory.registerValueParser. */
+  registerValueParser(name: string, parserInstance: ValueParser): void;
 }
 
 export interface SaxBuilderOptions {
@@ -105,6 +115,12 @@ export class SaxBuilder {
 export class SaxBuilderFactory {
   constructor(builderOptions?: SaxBuilderOptions);
   getInstance(parserOptions: object, readonlyMatcher: unknown): SaxBuilder;
+  /**
+   * Add or replace a named value parser in the shared registry (from
+   * `@nodable/base-output-builder`). Takes effect for all builder instances
+   * created after this call.
+   */
+  registerValueParser(name: string, parserInstance: ValueParser): void;
 }
 
 export default SaxParser;

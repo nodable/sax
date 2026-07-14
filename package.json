@@ -32,7 +32,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@nodable/flexible-xml-parser": "^1.10.0"
+    "@nodable/flexible-xml-parser": "^1.10.0",
+    "@nodable/base-output-builder": "^2.0.0"
   },
   "devDependencies": {
     "sax": "^1.6.0",

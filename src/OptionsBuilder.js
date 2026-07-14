@@ -2,6 +2,13 @@
 
 const defaultOptions = {
   handlers: {},
+  // Minimal default chain: only fixes undecoded entities (&lt; &#60; etc).
+  // 'boolean'/'number'/'ws' stay available by name but are opt-in — sax's
+  // contract is raw typed-as-string values unless asked otherwise.
+  valueParsers: {
+    tags: ['entity'],
+    attributes: ['entity'],
+  },
 };
 
 function deepClone(obj) {
@@ -18,6 +25,9 @@ function copyProperties(target, source) {
   for (const key of Object.keys(source)) {
     // Guard against prototype pollution via option keys
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    // An explicitly-undefined key (e.g. destructured-but-not-passed option)
+    // must not clobber a default — only a real value overrides.
+    if (source[key] === undefined) continue;
 
     if (typeof source[key] === 'function') {
       target[key] = source[key];
@@ -37,6 +47,10 @@ function copyProperties(target, source) {
 /**
  * Build the final builder-options object.
  *
+ * `valueParsers.tags`/`valueParsers.attributes`, when supplied by the user,
+ * fully replace the default chain (not merged element-by-element) — same
+ * "explicit array replaces default array" convention as FXP's own
+ * `tags.valueParsers`/`attributes.valueParsers`.
  *
  * @param {object} options - user-supplied builder options
  * @returns {object} final, deep-merged builder options
