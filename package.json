@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@nodable/base-output-builder": "^2.0.0",
-    "@nodable/flexible-xml-parser": "^1.11.1"
+    "@nodable/flexible-xml-parser": "^1.11.2"
   },
   "devDependencies": {
     "sax": "^1.6.0",
